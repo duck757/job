@@ -14,43 +14,72 @@ setInterval(() => {
 }, 270000); // every 4.5 minutes
 
 const { Client } = require("discord.js-selfbot-v13");
-const client = new Client();
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = process.env.CHANNEL_ID;
+// === Account Configs ===
+// Account 1
+const ACCOUNT1 = {
+  TOKEN: process.env.DISCORD_TOKEN_1,
+  CHANNEL_ID: process.env.CHANNEL_ID_1,
+  ALLOWED_IDS: [
+    "651755637499232256",
+    "981272700351828050",
+    "518862912392003584",
+    "699926664188002354"
+  ]
+};
 
-// === ONLY NEW: allowed IDs list ===
-const ALLOWED_IDS = [
-  "651755637499232256",
-  "981272700351828050",
-  "518862912392003584",
-  "699926664188002354",
-  "1284481288589283331"
-];
-// ===================================
+// Account 2
+const ACCOUNT2 = {
+  TOKEN: process.env.DISCORD_TOKEN_2,
+  CHANNEL_ID: process.env.CHANNEL_ID_2,
+  ALLOWED_IDS: [
+    "224533919415009290",
+    "1153364065033408593",
+    "1284481288589283331"
+    // add more IDs for account 2 if needed
+  ]
+};
 
-// Minimal error logging so the process doesn't exit silently on Render
-process.on("unhandledRejection", (err) => {
-  console.error("UnhandledRejection:", err);
+// === Start both accounts ===
+[ACCOUNT1, ACCOUNT2].forEach((config, idx) => {
+  if (!config.TOKEN) {
+    console.log(`⚠️ Account ${idx + 1} TOKEN missing, skipping`);
+    return;
+  }
+  startBot(config, idx + 1);
 });
-process.on("uncaughtException", (err) => {
-  console.error("UncaughtException:", err);
-});
 
-client.on("ready", () => {
-  console.log(`[Login] Logged in as ${client.user?.username}`);
-  startRandomCountingLoop().catch((err) => {
-    console.error("Counting loop error:", err);
+function startBot({ TOKEN, CHANNEL_ID, ALLOWED_IDS }, accountNum) {
+  const client = new Client();
+
+  process.on("unhandledRejection", (err) => {
+    console.error(`[Acc${accountNum}] UnhandledRejection:`, err);
   });
-});
+  process.on("uncaughtException", (err) => {
+    console.error(`[Acc${accountNum}] UncaughtException:`, err);
+  });
 
-async function startRandomCountingLoop() {
+  client.on("ready", () => {
+    console.log(`[Acc${accountNum} Login] Logged in as ${client.user?.username}`);
+    startRandomCountingLoop(client, CHANNEL_ID, ALLOWED_IDS, accountNum).catch(
+      (err) => {
+        console.error(`[Acc${accountNum}] Counting loop error:`, err);
+      }
+    );
+  });
+
+  client.login(TOKEN).catch((err) => {
+    console.error(`[Acc${accountNum}] Discord login failed:`, err);
+  });
+}
+
+async function startRandomCountingLoop(client, CHANNEL_ID, ALLOWED_IDS, accountNum) {
   const channel = await client.channels.fetch(CHANNEL_ID);
-  let streak = 0; // ✅ streak tracker for skip logic
+  let streak = 0;
 
   while (true) {
-    const waitTime = randInt(1, 7) * 60 * 1000; // 1-7 minutes
-    logStatus("Sleeping", `Waiting ${Math.floor(waitTime / 60000)} mins`);
+    const waitTime = randInt(1, 7) * 60 * 1000;
+    logStatus(accountNum, "Sleeping", `Waiting ${Math.floor(waitTime / 60000)} mins`);
     await sleep(waitTime);
 
     let retryAttempts = 0;
@@ -60,7 +89,7 @@ async function startRandomCountingLoop() {
       const latestNumber = parseInt(latest?.content?.trim?.() ?? "");
 
       if (!latest || isNaN(latestNumber)) {
-        logStatus("Skipping", "Latest message is not a number");
+        logStatus(accountNum, "Skipping", "Latest message is not a number");
         break;
       }
 
@@ -68,60 +97,56 @@ async function startRandomCountingLoop() {
       const authorTag = latest.author?.tag;
 
       if (!authorId) {
-        logStatus("Skipping", "Latest message author not available");
+        logStatus(accountNum, "Skipping", "Latest message author not available");
         break;
       }
 
       if (authorId === client.user.id) {
-        logStatus("Skipping", "Last message was from self — solo not allowed");
+        logStatus(accountNum, "Skipping", "Last message was from self — solo not allowed");
         break;
       }
 
       if (!ALLOWED_IDS.includes(authorId)) {
         const name = authorTag || authorId;
-        logStatus("Skipping", `Last number sent by ${name} not in allowed list`);
+        logStatus(accountNum, "Skipping", `Last number sent by ${name} not in allowed list`);
         break;
       }
 
-      // ✅ 4-in-1 Skip Logic (random, time-weighted, streak-breaker, long rest)
+      // === 4-in-1 Skip Logic ===
       let shouldSkip = false;
 
-      // 1) Random skip (20%)
       if (Math.random() < 0.2) {
-        logStatus("Skipping", "Random skip (20% chance)");
+        logStatus(accountNum, "Skipping", "Random skip (20% chance)");
         shouldSkip = true;
       }
 
-      // 2) Time-weighted skip (40% if wait < 3 mins, else 10%)
       const skipChance = waitTime < 3 * 60 * 1000 ? 0.4 : 0.1;
       if (!shouldSkip && Math.random() < skipChance) {
-        logStatus("Skipping", "Time-weighted skip");
+        logStatus(accountNum, "Skipping", "Time-weighted skip");
         shouldSkip = true;
       }
 
-      // 3) Streak breaker (after 3+ counts, 50% chance to skip)
       if (!shouldSkip && streak >= 3 && Math.random() < 0.5) {
-        logStatus("Skipping", "Breaking streak to look human");
+        logStatus(accountNum, "Skipping", "Breaking streak to look human");
         streak = 0;
         shouldSkip = true;
       }
 
-      // 4) Long rest skip (5% chance, 5–10 min extra wait)
       if (!shouldSkip && Math.random() < 0.05) {
-        logStatus("Skipping", "Taking a long rest (extra wait)");
+        logStatus(accountNum, "Skipping", "Taking a long rest (extra wait)");
         await sleep(randInt(5, 10) * 60 * 1000);
         shouldSkip = true;
       }
 
       if (shouldSkip) {
-        break; // skip this round
+        break;
       }
 
       // === Normal counting flow ===
       const next = latestNumber + 1;
 
       await channel.sendTyping();
-      await sleep(randInt(1000, 3000)); // Human-like delay
+      await sleep(randInt(1000, 3000));
 
       const confirm = (await channel.messages.fetch({ limit: 1 })).first();
       const confirmNum = parseInt(confirm?.content?.trim?.() ?? "");
@@ -129,20 +154,16 @@ async function startRandomCountingLoop() {
       if (!confirm || confirm.id !== latest.id || confirmNum !== latestNumber) {
         retryAttempts++;
         if (retryAttempts > 2) {
-          logStatus("Canceled", "Sniped again. Giving up this round.");
+          logStatus(accountNum, "Canceled", "Sniped again. Giving up this round.");
           break;
         }
-
-        logStatus(
-          "Retrying",
-          `Sniped — retrying immediately (attempt ${retryAttempts})`
-        );
+        logStatus(accountNum, "Retrying", `Sniped — retrying (attempt ${retryAttempts})`);
         continue;
       }
 
       await channel.send(`${next}`);
       streak++;
-      logStatus("Counting", `Sent ${next}`);
+      logStatus(accountNum, "Counting", `Sent ${next}`);
       break;
     }
   }
@@ -157,11 +178,6 @@ function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-function logStatus(status, reason) {
-  console.log(`[${new Date().toISOString()}] [${status}] ${reason}`);
+function logStatus(acc, status, reason) {
+  console.log(`[Acc${acc}] [${new Date().toISOString()}] [${status}] ${reason}`);
 }
-
-// Safe login: log failure but keep process alive for debugging
-client.login(TOKEN).catch((err) => {
-  console.error("Discord login failed:", err);
-});
