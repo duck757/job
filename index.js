@@ -78,7 +78,7 @@ async function startRandomCountingLoop(client, CHANNEL_ID, ALLOWED_IDS, accountN
   let streak = 0;
 
   while (true) {
-    const waitTime = randInt(1, 7) * 60 * 1000;
+    const waitTime = randInt(1, 3) * 60 * 1000;
     logStatus(accountNum, "Sleeping", `Waiting ${Math.floor(waitTime / 60000)} mins`);
     await sleep(waitTime);
 
