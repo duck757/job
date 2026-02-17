@@ -45,7 +45,7 @@ async function startRandomCountingLoop(client, CHANNEL_ID) {
   const channel = await client.channels.fetch(CHANNEL_ID);
 
   while (true) {
-    const waitTime = randInt(1, 2) * 60 * 1000;
+    const waitTime = randInt(1, 200) * 60 * 1000;
     logStatus(client, "Sleeping", `Waiting ${Math.floor(waitTime / 60000)} mins`);
     await sleep(waitTime);
 
